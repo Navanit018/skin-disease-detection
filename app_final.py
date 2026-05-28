@@ -7,12 +7,38 @@ import os
 from datetime import datetime
 import json
 import base64
+import random
 
 st.set_page_config(page_title="Skin Disease Detection", page_icon="🩺", layout="wide")
 
 PROJECT_DIR = Path("C:/Users/ACER/OneDrive/Desktop/Skin Disease Detection")
-MODEL_PATH = PROJECT_DIR / 'best_model.keras'
+MODEL_PATH_ADV = Path("best_model_advanced.keras")
+MODEL_PATH_V2 = Path("skin_disease_model_v2.keras")
+MODEL_PATH_OLD = Path("best_model.keras")
 HISTORY_FILE = PROJECT_DIR / 'prediction_history.json'
+
+# Custom objects for loading
+class FocalLoss(tf.keras.losses.Loss):
+    def __init__(self, gamma=2.0, alpha=0.25, from_logits=False, **kwargs):
+        super().__init__(**kwargs)
+        self.gamma = gamma
+        self.alpha = alpha
+        self.from_logits = from_logits
+
+    def call(self, y_true, y_pred):
+        epsilon = tf.keras.backend.epsilon()
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1. - epsilon)
+        cross_entropy = -y_true * tf.math.log(y_pred)
+        pt = tf.where(tf.equal(y_true, 1.0), y_pred, 1 - y_pred)
+        alpha_t = tf.where(tf.equal(y_true, 1.0), self.alpha, 1 - self.alpha)
+        focal_weight = alpha_t * tf.pow(1. - pt, self.gamma)
+        loss = focal_weight * cross_entropy
+        return tf.reduce_sum(loss, axis=-1)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({'gamma': self.gamma, 'alpha': self.alpha, 'from_logits': self.from_logits})
+        return config
 
 CLASS_NAMES = ['akiec', 'bcc', 'bkl', 'df', 'nv', 'vasc', 'mel']
 
@@ -92,22 +118,42 @@ def save_history(prediction_data):
 
 @st.cache_resource
 def load_model():
-    try:
-        model = tf.keras.models.load_model(MODEL_PATH)
-        return model
-    except Exception as e:
-        st.error(f"Error loading model: {e}")
-        return None
+    custom_objs = {'FocalLoss': FocalLoss}
+    for path in [MODEL_PATH_ADV, MODEL_PATH_V2, MODEL_PATH_OLD]:
+        try:
+            model = tf.keras.models.load_model(path, custom_objects=custom_objs, compile=False)
+            st.info(f"Loaded model: {path.name}")
+            return model
+        except:
+            continue
+    st.error("No model found! Please train first.")
+    return None
+
+def get_img_size():
+    return 224
 
 def preprocess_image(img):
     img = img.convert('RGB')
-    img = img.resize((224, 224))
-    img_array = np.array(img) / 255.0
+    img = img.resize((get_img_size(), get_img_size()), Image.LANCZOS)
+    img_array = np.array(img, dtype=np.float32) / 127.5 - 1.0
     img_array = np.expand_dims(img_array, axis=0)
     return img_array
 
+def tta_predict(model, img_array, n_aug=10):
+    preds = [model.predict(img_array, verbose=0)]
+    for _ in range(n_aug):
+        aug = img_array.copy()
+        if random.random() > 0.5:
+            aug = np.fliplr(aug)
+        if random.random() > 0.5:
+            aug = np.flipud(aug)
+        if random.random() > 0.3:
+            aug = np.rot90(aug, k=random.choice([1, 2, 3]), axes=(1, 2))
+        preds.append(model.predict(aug, verbose=0))
+    return np.mean(preds, axis=0)[0]
+
 def predict(model, img_array):
-    predictions = model.predict(img_array, verbose=0)[0]
+    predictions = tta_predict(model, img_array)
     results = []
     for idx in np.argsort(predictions)[::-1][:3]:
         results.append({
