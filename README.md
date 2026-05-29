@@ -18,7 +18,7 @@ AI-powered skin disease detection from skin lesion images (HAM10000 dataset).
 3. Connect your GitHub repo
 4. Set **Runtime** to `Python 3`
 5. **Build Command**: `pip install -r requirements.txt`
-6. **Start Command**: `streamlit run app.py --server.port $PORT --server.address 0.0.0.0`
+6. **Start Command**: `streamlit run app_comprehensive.py --server.port $PORT --server.address 0.0.0.0`
 7. Deploy!
 
 ## Model
