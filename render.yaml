@@ -2,6 +2,6 @@ services:
   - type: web
     name: skin-disease-detection
     runtime: python
-    pythonVersion: 3.11
-    buildCommand: pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
+    pythonVersion: 3.11.9
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install --no-build-isolation -r requirements.txt
     startCommand: streamlit run app_comprehensive.py --server.port $PORT --server.address 0.0.0.0
