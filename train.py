@@ -17,11 +17,66 @@ from sklearn.model_selection import train_test_split
 
 print("TensorFlow version:", tf.__version__)
 
+
+class F2Score(tf.keras.metrics.Metric):
+    def __init__(self, num_classes=7, name='f2_score', **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.num_classes = num_classes
+        self.tp = self.add_weight(name='tp', shape=(num_classes,), initializer='zeros')
+        self.fp = self.add_weight(name='fp', shape=(num_classes,), initializer='zeros')
+        self.fn = self.add_weight(name='fn', shape=(num_classes,), initializer='zeros')
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_pred_class = tf.argmax(y_pred, axis=1)
+        y_true_class = tf.argmax(y_true, axis=1)
+        pred_one_hot = tf.one_hot(y_pred_class, self.num_classes)
+        true_one_hot = y_true
+        tp = tf.reduce_sum(pred_one_hot * true_one_hot, axis=0)
+        fp = tf.reduce_sum(pred_one_hot * (1 - true_one_hot), axis=0)
+        fn = tf.reduce_sum((1 - pred_one_hot) * true_one_hot, axis=0)
+        self.tp.assign_add(tp)
+        self.fp.assign_add(fp)
+        self.fn.assign_add(fn)
+
+    def result(self):
+        precision = self.tp / (self.tp + self.fp + tf.keras.backend.epsilon())
+        recall = self.tp / (self.tp + self.fn + tf.keras.backend.epsilon())
+        f2 = (5.0 * precision * recall) / (4.0 * precision + recall + tf.keras.backend.epsilon())
+        return tf.reduce_mean(f2)
+
+    def reset_state(self):
+        self.tp.assign(tf.zeros_like(self.tp))
+        self.fp.assign(tf.zeros_like(self.fp))
+        self.fn.assign(tf.zeros_like(self.fn))
+
+
+class FocalLoss(tf.keras.losses.Loss):
+    def __init__(self, gamma=2.0, alpha=0.25, **kwargs):
+        super().__init__(**kwargs)
+        self.gamma = gamma
+        self.alpha = alpha
+
+    def call(self, y_true, y_pred):
+        epsilon = tf.keras.backend.epsilon()
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1. - epsilon)
+        cross_entropy = -y_true * tf.math.log(y_pred)
+        pt = tf.where(tf.equal(y_true, 1.0), y_pred, 1 - y_pred)
+        alpha_t = tf.where(tf.equal(y_true, 1.0), self.alpha, 1 - self.alpha)
+        focal_weight = alpha_t * tf.pow(1. - pt, self.gamma)
+        loss = focal_weight * cross_entropy
+        return tf.reduce_sum(loss, axis=-1)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({'gamma': self.gamma, 'alpha': self.alpha})
+        return config
+
+
 IMG_SIZE = 128
 BATCH_SIZE = 32
 EPOCHS = 15
 
-PROJECT_DIR = Path("C:/Users/ACER/OneDrive/Desktop/Skin Disease Detection")
+PROJECT_DIR = Path(__file__).resolve().parent
 
 CLASS_NAMES = ['akiec', 'bcc', 'bkl', 'df', 'nv', 'vasc', 'mel']
 CLASS_TO_INDEX = {cls: idx for idx, cls in enumerate(CLASS_NAMES)}
@@ -101,8 +156,8 @@ def build_model(num_classes):
 
     model.compile(
         optimizer=Adam(learning_rate=0.001),
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
+        loss=FocalLoss(gamma=2.0, alpha=0.25),
+        metrics=[F2Score(num_classes=len(CLASS_NAMES))]
     )
 
     return model
@@ -125,7 +180,7 @@ def train():
     model = build_model(len(CLASS_NAMES))
 
     callbacks = [
-        EarlyStopping(monitor='val_accuracy', patience=5, restore_best_weights=True),
+        EarlyStopping(monitor='val_f2_score', patience=5, restore_best_weights=True, mode='max'),
         ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3)
     ]
 
@@ -138,7 +193,7 @@ def train():
         callbacks=callbacks
     )
 
-    print(f"\nPhase 1 Best Val Accuracy: {max(history1.history['val_accuracy']):.4f}")
+    print(f"\nPhase 1 Best Val F2 Score: {max(history1.history['val_f2_score']):.4f}")
 
     print("\n--- Training Phase 2: Fine-tuning ---")
     base_model = model.layers[0]
@@ -146,8 +201,8 @@ def train():
 
     model.compile(
         optimizer=Adam(learning_rate=0.0001),
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
+        loss=FocalLoss(gamma=2.0, alpha=0.25),
+        metrics=[F2Score(num_classes=len(CLASS_NAMES))]
     )
 
     history2 = model.fit(
@@ -158,7 +213,7 @@ def train():
         callbacks=callbacks
     )
 
-    print(f"\nPhase 2 Best Val Accuracy: {max(history2.history['val_accuracy']):.4f}")
+    print(f"\nPhase 2 Best Val F2 Score: {max(history2.history['val_f2_score']):.4f}")
 
     model.save(PROJECT_DIR / 'skin_disease_model.keras')
 
@@ -177,8 +232,8 @@ def train():
     print(f"Model: {PROJECT_DIR / 'skin_disease_model.keras'}")
     print(f"Artifact: {PROJECT_DIR / 'model_artifact.pkl'}")
 
-    val_loss, val_acc = model.evaluate(X_val, y_val)
-    print(f"\nFinal Validation Accuracy: {val_acc:.4f}")
+    val_loss, val_f2 = model.evaluate(X_val, y_val)
+    print(f"\nFinal Validation F2 Score: {val_f2:.4f}")
 
 if __name__ == '__main__':
     train()

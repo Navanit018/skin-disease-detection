@@ -25,7 +25,7 @@ AI-powered skin disease detection from skin lesion images (HAM10000 dataset).
 - **Dataset**: HAM10000 (10,015 skin lesion images, 7 classes)
 - **Architecture**: EfficientNet-B0 with transfer learning
 - **Framework**: PyTorch (trained on NVIDIA RTX 4050 GPU)
-- **Validation Accuracy**: ~67%
+- **Validation Accuracy**: ~90%
 
 ## Classes
 - akiec - Actinic Keratoses
