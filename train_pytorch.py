@@ -17,7 +17,7 @@ BATCH_SIZE = 64
 EPOCHS_PHASE1 = 20
 EPOCHS_PHASE2 = 15
 
-PROJECT_DIR = Path("C:/Users/ACER/OneDrive/Desktop/Skin Disease Detection")
+PROJECT_DIR = Path(__file__).resolve().parent
 
 CLASS_NAMES = ['akiec', 'bcc', 'bkl', 'df', 'nv', 'vasc', 'mel']
 CLASS_TO_INDEX = {cls: idx for idx, cls in enumerate(CLASS_NAMES)}
