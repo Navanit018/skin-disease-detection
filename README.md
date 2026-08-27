@@ -12,6 +12,10 @@ AI-powered skin disease detection from skin lesion images (HAM10000 dataset).
 1. Install: `pip install -r requirements.txt`
 2. Run: `streamlit run app.py`
 
+### Colab quick-smoke test
+Use `train_colab.ipynb` for a fast PyTorch smoke test on a sampled subset of HAM10000.
+Open in Colab, set runtime to GPU, and run cells in order; see cell 6 for smoke test and cell 7 for full training instructions.
+
 ## Deploy to Render
 1. Push this repo to GitHub
 2. Create a new **Web Service** on [render.com](https://render.com)
